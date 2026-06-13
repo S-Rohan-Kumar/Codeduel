@@ -353,19 +353,56 @@ export async function POST(req: Request) {
       }
     });
 
+    let matchCompleted = false;
+    let winnerId: string | null = null;
+
     if (overallVerdict === 'Accepted') {
       const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-      await fetch(`${APP_URL}/api/match/complete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ matchId, winnerId: userId, roomId })
+      try {
+        const completeRes = await fetch(`${APP_URL}/api/match/complete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ matchId, winnerId: userId, roomId })
+        });
+        
+        if (completeRes.ok) {
+          matchCompleted = true;
+          winnerId = userId;
+        } else {
+          const dbMatch = await prisma.match.findUnique({
+            where: { id: matchId }
+          });
+          if (dbMatch && dbMatch.status === 'completed') {
+            matchCompleted = true;
+            winnerId = dbMatch.winnerId;
+          }
+        }
+      } catch (err) {
+        console.error('[SUBMIT] Error calling match complete:', err);
+        const dbMatch = await prisma.match.findUnique({
+          where: { id: matchId }
+        });
+        if (dbMatch && dbMatch.status === 'completed') {
+          matchCompleted = true;
+          winnerId = dbMatch.winnerId;
+        }
+      }
+    } else {
+      const dbMatch = await prisma.match.findUnique({
+        where: { id: matchId }
       });
+      if (dbMatch && dbMatch.status === 'completed') {
+        matchCompleted = true;
+        winnerId = dbMatch.winnerId;
+      }
     }
 
     return NextResponse.json({
       verdict: overallVerdict,
       executionMs: Math.round(maxExecutionMs),
-      failedCase
+      failedCase,
+      matchCompleted,
+      winnerId
     });
   } catch (error: any) {
     console.error('Submission error:', error);

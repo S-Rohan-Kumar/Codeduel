@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
-import { auth } from '@clerk/nextjs/server';
+import { auth, currentUser } from '@clerk/nextjs/server';
 
 export async function GET() {
   try {
@@ -9,6 +9,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const clerkUser = await currentUser();
     const user = await prisma.user.findUnique({
       where: { id: userId }
     });
@@ -31,8 +32,17 @@ export async function GET() {
     const rawId = userId || '';
     const displayName = rawId.length > 12 ? rawId.substring(0, 8) + '...' : rawId;
 
+    let displayUsername = clerkUser?.username || 
+                          clerkUser?.firstName || 
+                          user?.username || 
+                          displayName;
+
+    if (displayUsername.startsWith('user_') && displayUsername.length > 15) {
+      displayUsername = displayUsername.substring(0, 11) + '...';
+    }
+
     return NextResponse.json({
-      username: user?.username ?? displayName,
+      username: displayUsername,
       rating: user?.rating ?? 1200,
       matchesCount,
       winsCount

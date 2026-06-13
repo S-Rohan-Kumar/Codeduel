@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { ClerkProvider, SignInButton, Show, UserButton } from '@clerk/nextjs';
 import './globals.css';
 import { Inter } from 'next/font/google';
+import Link from 'next/link';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -18,19 +19,28 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="en" className="dark">
-        <body className={`${inter.className} bg-gray-950 text-gray-100 min-h-screen flex flex-col`}>
-          <nav className="flex items-center justify-between p-4 border-b border-gray-800 bg-gray-900/50 backdrop-blur-md">
-            <div className="font-bold text-xl text-blue-500 tracking-wider">CodeDuel</div>
-            <div>
+        <body className={`${inter.className} bg-neutral-950 text-neutral-100 min-h-screen flex flex-col antialiased`}>
+          <nav className="sticky top-0 z-40 flex items-center justify-between px-6 py-3 border-b border-neutral-900 bg-neutral-950/70 backdrop-blur-md">
+            <Link 
+              href="/dashboard" 
+              className="font-black text-xl tracking-tight bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent hover:opacity-90 transition-opacity"
+            >
+              CodeDuel
+            </Link>
+            <div className="flex items-center gap-4">
               <Show when="signed-out">
                 <SignInButton mode="modal">
-                  <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+                  <button className="border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 text-neutral-200 hover:text-white px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wider transition-all duration-200">
                     Sign In
                   </button>
                 </SignInButton>
               </Show>
               <Show when="signed-in">
-                <UserButton />
+                <UserButton appearance={{
+                  elements: {
+                    userButtonAvatarBox: "w-8 h-8 rounded-full border border-neutral-800"
+                  }
+                }} />
               </Show>
             </div>
           </nav>
