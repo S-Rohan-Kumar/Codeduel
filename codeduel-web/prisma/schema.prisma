@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id          String       @id @default(uuid())
+  username    String       @unique
+  email       String       @unique
+  rating      Int          @default(1200)
+  matchesWon  Int          @default(0)
+  matchesLost Int          @default(0)
+  createdAt   DateTime     @default(now())
+  
+  matchesAsPlayer1 Match[] @relation("Player1Matches")
+  matchesAsPlayer2 Match[] @relation("Player2Matches")
+  submissions      Submission[]
+}
+
+model Problem {
+  id          String     @id @default(uuid())
+  title       String
+  description String
+  difficulty  String
+  timeLimit   Float
+  memoryLimit Int
+  
+  testCases   TestCase[]
+  matches     Match[]
+}
+
+model TestCase {
+  id             String  @id @default(uuid())
+  problemId      String
+  input          String
+  expectedOutput String
+  isHidden       Boolean @default(true)
+  
+  problem Problem @relation(fields: [problemId], references: [id])
+}
+
+model Match {
+  id        String    @id @default(uuid())
+  problemId String
+  player1Id String
+  player2Id String
+  winnerId  String?
+  status    String
+  startTime DateTime  @default(now())
+  endTime   DateTime?
+
+  problem Problem @relation(fields: [problemId], references: [id])
+  player1 User    @relation("Player1Matches", fields: [player1Id], references: [id])
+  player2 User    @relation("Player2Matches", fields: [player2Id], references: [id])
+  
+  submissions Submission[]
+}
+
+model Submission {
+  id          String   @id @default(uuid())
+  matchId     String
+  userId      String
+  code        String
+  languageId  Int
+  status      String
+  executionMs Int?
+  createdAt   DateTime @default(now())
+
+  match Match @relation(fields: [matchId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
+}
+
+trigger for match-start 

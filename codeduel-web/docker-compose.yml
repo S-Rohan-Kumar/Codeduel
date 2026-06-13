@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: codeduel-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: codeduel
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+
+  redis:
+    image: redis:7-alpine
+    container_name: codeduel-redis
+    ports:
+      - "6379:6379"
+    restart: always
+
+  judge0:
+    image: judge0/judge0:latest
+    container_name: codeduel-judge0
+    ports:
+      - "2358:2358"
+    privileged: true
+    env_file: judge0.conf
+    restart: always
+    depends_on:
+      - redis
+      - postgres
+
+volumes:
+  postgres_data:
