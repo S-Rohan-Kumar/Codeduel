@@ -4,6 +4,10 @@ import { prisma } from '../../../../lib/prisma';
 export async function POST(req: Request) {
   try {
     const { matchId, winnerId, roomId } = await req.json();
+    const userId = winnerId;
+    console.log('[MATCH COMPLETE] winnerId:', winnerId)
+    console.log('[MATCH COMPLETE] userId from submit:', userId)
+    console.log('[MATCH COMPLETE] emitting to players...')
 
     const match = await prisma.match.findUnique({
       where: { id: matchId },
@@ -14,18 +18,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid match or already completed' }, { status: 400 });
     }
 
+    const isPlayer1Winner = winnerId === match.player1Id;
+    const winner = isPlayer1Winner ? match.player1 : match.player2;
+    const loser = isPlayer1Winner ? match.player2 : match.player1;
+    const actualWinnerId = winner.id;
+
     await prisma.match.update({
       where: { id: matchId },
       data: {
-        winnerId,
+        winnerId: actualWinnerId,
         status: 'completed',
         endTime: new Date()
       }
     });
-
-    const isPlayer1Winner = winnerId === match.player1Id;
-    const winner = isPlayer1Winner ? match.player1 : match.player2;
-    const loser = isPlayer1Winner ? match.player2 : match.player1;
 
     const K = 32;
     const expectedWinner = 1 / (1 + Math.pow(10, (loser.rating - winner.rating) / 400));
@@ -55,7 +60,7 @@ export async function POST(req: Request) {
     await fetch(`${SERVER_URL}/internal/match-complete`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ roomId, winnerId })
+      body: JSON.stringify({ roomId, winnerId: actualWinnerId })
     });
 
     return NextResponse.json({ success: true });

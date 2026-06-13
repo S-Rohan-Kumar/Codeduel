@@ -52,21 +52,21 @@ export default async function ProblemsPage({ searchParams }: { searchParams?: { 
                 >
                   <td className="p-0 border-r-4 border-white">
                     <Link 
-                      href={`/dashboard/problems/${problem.id}`}
+                      href={`/practice/${problem.id}`}
                       className="block p-4 group-hover:underline font-bold text-lg w-full h-full"
                     >
                       {problem.title}
                     </Link>
                   </td>
                   <td className="p-0 border-r-4 border-white font-bold">
-                    <Link href={`/dashboard/problems/${problem.id}`} className="block p-4 w-full h-full">
+                    <Link href={`/practice/${problem.id}`} className="block p-4 w-full h-full">
                       <span className={getDifficultyBadge(problem.difficulty)}>
                         {problem.difficulty.toUpperCase()}
                       </span>
                     </Link>
                   </td>
                   <td className="p-0 font-bold">
-                    <Link href={`/dashboard/problems/${problem.id}`} className="block p-4 w-full h-full text-zinc-300">
+                    <Link href={`/practice/${problem.id}`} className="block p-4 w-full h-full text-zinc-300">
                       {problem.timeLimit.toFixed(1)}s
                     </Link>
                   </td>

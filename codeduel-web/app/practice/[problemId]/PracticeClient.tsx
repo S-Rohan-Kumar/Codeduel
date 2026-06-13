@@ -1,19 +1,15 @@
 'use client';
 
-import { useReducer, useEffect, useRef } from 'react';
-import { useSocket } from '../../../hooks/useSocket';
+import { useReducer, useEffect } from 'react';
 import Editor from '@monaco-editor/react';
 import CFMathText from '../../../components/CFMathText';
+import Link from 'next/link';
 
-interface ArenaState {
+interface PracticeState {
   code: string;
   language: string;
-  timeLeft: number | null;
   submissionStatus: "idle" | "running" | "accepted" | "wrong_answer" | "tle" | "error";
-  opponentStatus: "coding" | "submitted" | "accepted" | "waiting";
-  matchOver: { winnerId: string | null, reason: string } | null;
   problem: any | null;
-  matchId: string | null;
   lastVerdict: string | null;
   testPanelOpen: boolean;
   testActiveTab: 'samples' | 'custom';
@@ -27,12 +23,8 @@ interface ArenaState {
 type Action = 
   | { type: 'SET_CODE', payload: string }
   | { type: 'SET_LANGUAGE', payload: string }
-  | { type: 'TICK' }
-  | { type: 'SET_TIME_LEFT', payload: number }
-  | { type: 'SET_SUBMISSION_STATUS', payload: ArenaState['submissionStatus'] }
-  | { type: 'SET_OPPONENT_STATUS', payload: ArenaState['opponentStatus'] }
-  | { type: 'MATCH_OVER', payload: { winnerId: string | null, reason: string } }
-  | { type: 'ROOM_READY', payload: { problem: any, timeLimit: number, matchId: string } }
+  | { type: 'SET_SUBMISSION_STATUS', payload: PracticeState['submissionStatus'] }
+  | { type: 'SET_PROBLEM', payload: any }
   | { type: 'SET_VERDICT', payload: string | null }
   | { type: 'TOGGLE_TEST_PANEL' }
   | { type: 'SET_TEST_TAB', payload: 'samples' | 'custom' }
@@ -52,16 +44,11 @@ if __name__ == '__main__':
 `
 };
 
-
-const initialState: ArenaState = {
+const initialState: PracticeState = {
   code: TEMPLATES.python,
   language: 'python',
-  timeLeft: null,
   submissionStatus: 'idle',
-  opponentStatus: 'waiting',
-  matchOver: null,
   problem: null,
-  matchId: null,
   lastVerdict: null,
   testPanelOpen: false,
   testActiveTab: 'samples',
@@ -72,7 +59,7 @@ const initialState: ArenaState = {
   testingStatus: 'idle'
 };
 
-function arenaReducer(state: ArenaState, action: Action): ArenaState {
+function practiceReducer(state: PracticeState, action: Action): PracticeState {
   switch (action.type) {
     case 'SET_CODE': return { ...state, code: action.payload };
     case 'SET_LANGUAGE': {
@@ -84,18 +71,8 @@ function arenaReducer(state: ArenaState, action: Action): ArenaState {
       }
       return { ...state, language: newLang, code: newCode };
     }
-    case 'TICK': return { ...state, timeLeft: state.timeLeft ? state.timeLeft - 1 : 0 };
-    case 'SET_TIME_LEFT': return { ...state, timeLeft: action.payload };
     case 'SET_SUBMISSION_STATUS': return { ...state, submissionStatus: action.payload };
-    case 'SET_OPPONENT_STATUS': return { ...state, opponentStatus: action.payload };
-    case 'MATCH_OVER': return { ...state, matchOver: action.payload };
-    case 'ROOM_READY': return { 
-      ...state, 
-      problem: action.payload.problem, 
-      timeLeft: action.payload.timeLimit,
-      matchId: action.payload.matchId,
-      opponentStatus: 'coding'
-    };
+    case 'SET_PROBLEM': return { ...state, problem: action.payload };
     case 'SET_VERDICT': return { ...state, lastVerdict: action.payload };
     case 'TOGGLE_TEST_PANEL': return { ...state, testPanelOpen: !state.testPanelOpen };
     case 'SET_TEST_TAB': return { ...state, testActiveTab: action.payload };
@@ -108,86 +85,29 @@ function arenaReducer(state: ArenaState, action: Action): ArenaState {
   }
 }
 
-export default function ArenaClient({ roomId, userId }: { roomId: string, userId: string }) {
-  const { socket, isConnected } = useSocket();
+export default function PracticeClient({ problemId, userId }: { problemId: string, userId: string }) {
+  const [state, dispatch] = useReducer(practiceReducer, initialState);
 
-  const [state, dispatch] = useReducer(arenaReducer, initialState);
-  const lastSubmitTime = useRef<number>(0);
-  const lastFetchResponseTime = useRef<number>(0);
-  
   useEffect(() => {
-    if (!socket || !isConnected) return;
-    
-    socket.emit('join_room', { roomId, userId });
-
-    socket.on('room_ready', async (data) => {
-      dispatch({ type: 'ROOM_READY', payload: data });
+    async function loadData() {
       try {
-        const res = await fetch(`/api/samples?matchId=${data.matchId}`);
-        const result = await res.json();
-        if (result.samples) {
-          dispatch({ type: 'SET_SAMPLES', payload: result.samples });
+        const probRes = await fetch(`/api/problems/${problemId}`);
+        const probResult = await probRes.json();
+        if (probResult.problem) {
+          dispatch({ type: 'SET_PROBLEM', payload: probResult.problem });
+        }
+
+        const samplesRes = await fetch(`/api/samples?problemId=${problemId}`);
+        const samplesResult = await samplesRes.json();
+        if (samplesResult.samples) {
+          dispatch({ type: 'SET_SAMPLES', payload: samplesResult.samples });
         }
       } catch (err) {
-        console.error(err);
+        console.error('Error loading practice problem data:', err);
       }
-    });
-
-    socket.on('opponent_status', (status) => {
-      dispatch({ type: 'SET_OPPONENT_STATUS', payload: status });
-    });
-
-    socket.on('match_over', (data) => {
-      const currentUserId = userId;
-      console.log('[ARENA SOCKET] match result received:', data);
-      console.log('[ARENA SOCKET] my userId:', currentUserId);
-      console.log('[ARENA SOCKET] winnerId in event:', data.winnerId);
-      console.log('[ARENA SOCKET] am I winner?', data.winnerId === currentUserId);
-
-      // If we already got VICTORY from the fetch response, skip the socket event.
-      // This prevents the socket from overwriting our own VICTORY with a comparison
-      // that might fail due to ID format mismatches.
-      if (lastFetchResponseTime.current >= lastSubmitTime.current && lastSubmitTime.current > 0) {
-        console.log('[ARENA SOCKET] ignoring match_over — fetch already resolved our verdict as VICTORY');
-        // Still dispatch so the opponent's side gets the overlay via their own socket event.
-        // But only dispatch if we haven't already set matchOver from the fetch path.
-        return;
-      }
-
-      // We are the OPPONENT (loser) — only socket can tell us we lost.
-      console.log('[ARENA SOCKET] dispatching MATCH_OVER (we are the opponent/loser)');
-      dispatch({ type: 'MATCH_OVER', payload: data });
-    });
-
-    socket.on('verdict', (data: any) => {
-      const timeSinceSubmit = Date.now() - lastSubmitTime.current;
-      if (timeSinceSubmit < 2000) {
-        console.log('[SOCKET] Ignoring socket verdict event (preferring fresh fetch response):', data);
-        return;
-      }
-      if (lastFetchResponseTime.current >= lastSubmitTime.current) {
-        console.log('[SOCKET] Ignoring socket verdict event (already received fresh fetch response):', data);
-        return;
-      }
-      console.log('[SOCKET] Received socket verdict event:', data);
-      dispatch({ type: 'SET_VERDICT', payload: data.verdict || data.error });
-    });
-
-    return () => {
-      socket.off('room_ready');
-      socket.off('opponent_status');
-      socket.off('match_over');
-      socket.off('verdict');
-    };
-  }, [socket, isConnected, roomId, userId]);
-
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (state.timeLeft !== null && state.timeLeft > 0 && !state.matchOver) {
-      interval = setInterval(() => dispatch({ type: 'TICK' }), 1000);
     }
-    return () => clearInterval(interval);
-  }, [state.timeLeft, state.matchOver]);
+    loadData();
+  }, [problemId]);
 
   const handleRunTests = async () => {
     dispatch({ type: 'SET_TESTING_STATUS', payload: 'running' });
@@ -199,7 +119,7 @@ export default function ArenaClient({ roomId, userId }: { roomId: string, userId
     
     try {
       if (state.testActiveTab === 'samples') {
-        const samplesRes = await fetch(`/api/samples?matchId=${state.matchId}`);
+        const samplesRes = await fetch(`/api/samples?problemId=${problemId}`);
         const samplesData = await samplesRes.json();
         const samplesList = samplesData.samples || [];
 
@@ -216,12 +136,11 @@ export default function ArenaClient({ roomId, userId }: { roomId: string, userId
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               code: state.code,
-              language: 'python',
+              language: state.language,
               stdin: sample.input
             })
           });
           const runResult = await runRes.json();
-          console.log('[SAMPLE TEST] raw response for TC:', i, JSON.stringify(runResult));
 
           const actualOutput = runResult.stdout ?? '';
           const expectedOutput = sample.expectedOutput || '';
@@ -263,88 +182,45 @@ export default function ArenaClient({ roomId, userId }: { roomId: string, userId
   };
 
   const handleSubmit = async () => {
-    if (!socket || !state.matchId) return;
-    
-    lastSubmitTime.current = Date.now();
-    lastFetchResponseTime.current = 0;
     dispatch({ type: 'SET_SUBMISSION_STATUS', payload: 'running' });
     dispatch({ type: 'SET_VERDICT', payload: null });
-    socket.emit('submit_attempt', { roomId, userId, status: 'submitted' });
-    
-    // Map languages to Judge0 IDs
-    let languageId = 71; // Python
 
     try {
-      const res = await fetch('/api/submit', {
+      const res = await fetch('/api/practice/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          matchId: state.matchId,
-          userId,
+          problemId,
           code: state.code,
-          languageId,
-          roomId
+          language: state.language
         })
       });
 
       const data = await res.json();
-      console.log('[SUBMIT] fetch response:', JSON.stringify(data));
-
-      // Mark fetch as done — socket match_over handler will see this and skip
-      lastFetchResponseTime.current = Date.now();
-
-      if (data.verdict === 'Accepted') {
-        // Submitter ALWAYS gets VICTORY directly from the fetch.
-        // Do NOT rely on socket winnerId comparison — ID formats may differ.
-        console.log('[SUBMIT] Accepted — setting VICTORY directly from fetch');
-        dispatch({ type: 'SET_VERDICT', payload: 'Accepted' });
-        dispatch({ type: 'SET_SUBMISSION_STATUS', payload: 'accepted' });
-        dispatch({ type: 'MATCH_OVER', payload: { winnerId: userId, reason: 'solved' } });
-        socket.emit('submit_attempt', { roomId, userId, status: 'accepted' });
-      } else {
-        // Wrong Answer / RE / TLE — show inline verdict banner, stay in arena
-        console.log('[SUBMIT] Non-accepted verdict:', data.verdict);
-        dispatch({ type: 'SET_VERDICT', payload: data.verdict || data.error });
-        dispatch({ type: 'SET_SUBMISSION_STATUS', payload: 'wrong_answer' });
-        socket.emit('submit_attempt', { roomId, userId, status: 'coding' });
-        // Reset so future socket match_over events (opponent solved) are NOT ignored
-        lastFetchResponseTime.current = 0;
-      }
-
+      dispatch({ type: 'SET_VERDICT', payload: data.verdict || data.error });
+      dispatch({ type: 'SET_SUBMISSION_STATUS', payload: data.verdict === 'Accepted' ? 'accepted' : 'wrong_answer' });
     } catch (err) {
       dispatch({ type: 'SET_SUBMISSION_STATUS', payload: 'error' });
       dispatch({ type: 'SET_VERDICT', payload: 'Network Error' });
-      socket.emit('submit_attempt', { roomId, userId, status: 'coding' });
-      lastFetchResponseTime.current = 0;
     }
   };
 
-  const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60).toString().padStart(2, '0');
-    const s = (seconds % 60).toString().padStart(2, '0');
-    return `${m}:${s}`;
-  };
-
   if (!state.problem) {
-    return <div className="min-h-screen bg-black text-white flex items-center justify-center font-mono text-2xl uppercase font-black tracking-widest animate-pulse">Waiting for opponent...</div>;
+    return <div className="min-h-screen bg-black text-white flex items-center justify-center font-mono text-2xl uppercase font-black tracking-widest animate-pulse">Loading problem...</div>;
   }
-
-  const isLowTime = state.timeLeft !== null && state.timeLeft <= 60;
 
   return (
     <div className="h-screen bg-black text-white flex flex-col font-mono overflow-hidden">
       <header className="h-16 border-b-4 border-white flex justify-between items-center px-6 shrink-0 bg-black">
-        <div className="font-bold text-zinc-400 text-lg uppercase tracking-widest truncate w-1/3">
-          ROOM: {roomId.slice(0, 8)}
+        <div className="font-bold text-white text-lg uppercase tracking-widest truncate w-2/3">
+          PRACTICE: {state.problem.title}
         </div>
-        <div className={`text-4xl font-black tracking-tighter w-1/3 text-center ${isLowTime ? 'text-red-500 animate-pulse' : 'text-white'}`}>
-          {state.timeLeft !== null ? formatTime(state.timeLeft) : '--:--'}
-        </div>
-        <div className="font-bold text-lg uppercase tracking-widest text-right w-1/3 flex justify-end">
-          <span className="bg-zinc-800 px-4 py-1 border-2 border-zinc-600">
-            OPPONENT: <span className={state.opponentStatus === 'submitted' ? 'text-yellow-400' : 'text-green-400'}>{state.opponentStatus}</span>
-          </span>
-        </div>
+        <Link 
+          href="/dashboard/problems"
+          className="bg-zinc-800 hover:bg-zinc-700 text-white font-bold uppercase tracking-widest border-2 border-white py-1 px-4 text-sm"
+        >
+          ← Back
+        </Link>
       </header>
 
       <div className="flex-1 flex min-h-0">
@@ -467,9 +343,6 @@ export default function ArenaClient({ roomId, userId }: { roomId: string, userId
                         onChange={(e) => dispatch({ type: 'SET_CUSTOM_INPUT', payload: e.target.value })}
                         placeholder={"Enter input in CF format:\nLine 1: number of test cases (t)\nThen input for each test case"}
                       />
-                      <p className="text-zinc-500 text-xs mt-1">
-                        For Course Wishes: first line is t, then n k, then capacities, then wish levels
-                      </p>
                     </div>
                     
                     {state.customOutput && (
@@ -509,26 +382,9 @@ export default function ArenaClient({ roomId, userId }: { roomId: string, userId
             <CFMathText text={state.problem.description} />
           </div>
 
-          {state.lastVerdict && !state.matchOver && (
+          {state.lastVerdict && (
             <div className={`border-4 p-6 text-center mt-8 font-black uppercase tracking-widest text-2xl animate-in slide-in-from-bottom-4 ${state.lastVerdict === 'Accepted' ? 'border-green-500 text-green-500 bg-green-500/10' : 'border-red-500 text-red-500 bg-red-500/10'}`}>
               VERDICT: {state.lastVerdict}
-            </div>
-          )}
-
-          {state.matchOver && (
-            <div className="absolute inset-0 bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center p-8 text-center z-10">
-              <h2 className={`text-6xl font-black uppercase tracking-tighter mb-4 ${state.matchOver.winnerId === userId ? 'text-green-500' : state.matchOver.winnerId === null ? 'text-zinc-500' : 'text-red-500'}`}>
-                {state.matchOver.winnerId === userId ? 'VICTORY' : state.matchOver.winnerId === null ? 'DRAW' : 'DEFEAT'}
-              </h2>
-              <p className="text-2xl text-zinc-400 uppercase tracking-widest font-bold mb-8">
-                {state.matchOver.reason.replace('_', ' ')}
-              </p>
-              <button 
-                onClick={() => window.location.href = '/dashboard'}
-                className="bg-white text-black font-black uppercase tracking-widest py-4 px-12 text-xl hover:bg-zinc-300 transition-colors border-4 border-black"
-              >
-                Return to Dashboard
-              </button>
             </div>
           )}
         </div>
@@ -553,7 +409,7 @@ export default function ArenaClient({ roomId, userId }: { roomId: string, userId
           </button>
           <button 
             onClick={handleSubmit}
-            disabled={state.submissionStatus === 'running' || !!state.matchOver}
+            disabled={state.submissionStatus === 'running'}
             className="bg-white text-black font-black uppercase tracking-widest border-4 border-white py-3 px-12 hover:bg-zinc-300 transition-colors disabled:opacity-50 min-w-[200px]"
           >
             {state.submissionStatus === 'running' ? 'Running...' : 'Submit'}

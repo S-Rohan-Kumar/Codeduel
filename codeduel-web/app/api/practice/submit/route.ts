@@ -1,18 +1,14 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '../../../lib/prisma';
+import { prisma } from '../../../../lib/prisma';
 import { auth } from '@clerk/nextjs/server';
 
 function validateCourseWishes(input: string, output: string): boolean {
-  console.log('[validateCourseWishes] input param:', JSON.stringify(input))
-  console.log('[validateCourseWishes] output param:', JSON.stringify(output))
-  console.log('[validateCourseWishes] inputLines after split:', JSON.stringify(input.trim().split(/\r?\n/).filter(line => line.trim() !== '')))
-  console.log('[validateCourseWishes] outputLines after split:', JSON.stringify(output.trim().split(/\r?\n/).filter(line => line.trim() !== '')))
   try {
     const inputLines = input.trim().split(/\r?\n/).filter(line => line.trim() !== '');
     const outputLines = output.trim().split(/\r?\n/).filter(line => line.trim() !== '');
 
     if (inputLines.length === 0) return false;
-    if (outputLines.length === 0) return false; // Guard: empty stdout
+    if (outputLines.length === 0) return false;
 
     let lineIdx = 0;
     const t = parseInt(inputLines[lineIdx++], 10);
@@ -39,7 +35,6 @@ function validateCourseWishes(input: string, output: string): boolean {
 
       if (ops.length !== numOps) return false;
 
-      // Simulate the level limit checks
       const cnt = Array(k + 2).fill(0);
       for (const lv of b) {
         if (lv <= k + 1) {
@@ -51,22 +46,20 @@ function validateCourseWishes(input: string, output: string): boolean {
         const courseIdx = op - 1;
         if (courseIdx < 0 || courseIdx >= n) return false;
         const lv = b[courseIdx];
-        if (lv >= k + 1) return false; // Already at max level
+        if (lv >= k + 1) return false;
 
         const nxt = lv + 1;
         if (nxt <= k) {
           if (cnt[nxt] >= a[nxt]) {
-            return false; // Exceeds limit
+            return false;
           }
         }
 
-        // Apply upgrade
         cnt[lv]--;
         b[courseIdx] = nxt;
         cnt[nxt]++;
       }
 
-      // Check if all courses reached target level k + 1
       for (const lv of b) {
         if (lv !== k + 1) return false;
       }
@@ -160,7 +153,6 @@ function validateMickeyMouse(input: string, output: string): boolean {
       if (outLineIdx >= outputLines.length) return false;
       const arr = outputLines[outLineIdx++].split(/\s+/).map(Number);
 
-      // 1. Check array constraints
       if (arr.length !== x + y) return false;
 
       let countOnes = 0;
@@ -172,7 +164,6 @@ function validateMickeyMouse(input: string, output: string): boolean {
       }
       if (countOnes !== x || countNegOnes !== y) return false;
 
-      // 2. Compute minimum f(a) mathematically
       const s = Math.abs(x - y);
       let expectedMinWays = 0;
       if (s === 0) {
@@ -189,7 +180,6 @@ function validateMickeyMouse(input: string, output: string): boolean {
 
       if (printedAns !== expectedAns) return false;
 
-      // 3. Verify that the printed array actually achieves the min ways
       const actualWays = getPartitionWays(arr);
       if (actualWays !== expectedAns) return false;
     }
@@ -201,54 +191,36 @@ function validateMickeyMouse(input: string, output: string): boolean {
   }
 }
 
-
-
 export async function POST(req: Request) {
   try {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { matchId, code, languageId, roomId } = await req.json();
+    const { code, language, problemId } = await req.json();
 
-    if (!matchId || !code || !languageId || !roomId) {
+    if (!code || !language || !problemId) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    console.log(`[SUBMIT] Match ID: ${matchId}, Room ID: ${roomId}, Language: ${languageId}`);
-
-    const match = await prisma.match.findUnique({
-      where: { id: matchId },
-      include: { problem: { include: { testCases: true } } }
+    const problem = await prisma.problem.findUnique({
+      where: { id: problemId },
+      include: { testCases: true }
     });
 
-    console.log(`[SUBMIT] Match found: ${!!match}`);
-    if (!match) return NextResponse.json({ error: 'Match not found' }, { status: 404 });
+    if (!problem) {
+      return NextResponse.json({ error: 'Problem not found' }, { status: 404 });
+    }
 
-    const problem = match.problem;
     const testCases = problem.testCases;
-    console.log(`[SUBMIT] Found problem ${problem.title} with ${testCases.length} test cases.`);
-
-    const submission = await prisma.submission.create({
-      data: {
-        matchId,
-        userId,
-        code,
-        languageId,
-        status: 'running',
-      }
-    });
-    console.log(`[SUBMIT] Created Submission record ${submission.id}`);
-
     const PISTON_URL = process.env.PISTON_URL || 'http://localhost:2000';
 
     let overallVerdict = 'Accepted';
     let failedCase = null;
     let maxExecutionMs = 0;
 
-    let languageName = 'python';
+    let languageName = typeof language === 'string' ? language : 'python';
     let languageVersion = '*';
-    let fileName = 'main.py';
-
+    let fileName = languageName === 'javascript' || languageName === 'js' ? 'main.js' : 'main.py';
 
     for (let i = 0; i < testCases.length; i++) {
       const testCase = testCases[i];
@@ -259,16 +231,12 @@ export async function POST(req: Request) {
         ? JSON.parse(testCase.expectedOutput)
         : testCase.expectedOutput;
 
-      console.log(`[SUBMIT] Running Test Case ${i + 1}/${testCases.length}...`);
-      console.log(`[SUBMIT] Hitting Piston at ${PISTON_URL}/api/v2/execute`);
-
       const payload = {
         language: languageName,
         version: languageVersion,
         files: [{ name: fileName, content: code }],
         stdin: rawInput
       };
-      console.log(`[SUBMIT] Piston Payload:`, JSON.stringify(payload));
 
       const response = await fetch(`${PISTON_URL}/api/v2/execute`, {
         method: 'POST',
@@ -277,7 +245,6 @@ export async function POST(req: Request) {
       });
 
       const result = await response.json();
-      console.log(`[SUBMIT] Piston Result for TC ${i + 1}:`, JSON.stringify(result));
 
       maxExecutionMs = 50;
 
@@ -293,7 +260,6 @@ export async function POST(req: Request) {
         break;
       }
 
-      // Normalise output: trim each line to be whitespace-tolerant
       const normalise = (s: string) =>
         s.trim().split(/\r?\n/).map(l => l.trim()).filter(l => l !== '').join('\n');
 
@@ -302,22 +268,12 @@ export async function POST(req: Request) {
 
       let isCorrect = false;
 
-      console.log('[VALIDATOR INPUT] raw testCase.input:', JSON.stringify(testCase.input))
-      console.log('[VALIDATOR OUTPUT] raw actualOutput:', JSON.stringify(actualOutput))
-      console.log('[VALIDATOR] problem.id:', problem.id)
-      console.log('[VALIDATOR] expectedOutput sentinel:', testCase.expectedOutput)
-
       if (expectedOutput === 'CUSTOM_VALIDATED') {
         if (problem.id === 'cf-2216-A') {
-          console.log(`[SUBMIT] Sentinel CUSTOM_VALIDATED found, running custom validator for cf-2216-A...`);
           isCorrect = validateCourseWishes(rawInput, actualOutput);
-          console.log(`[SUBMIT] Custom simulator validator result: ${isCorrect}`);
         } else if (problem.id === 'cf-2211-B') {
-          console.log(`[SUBMIT] Sentinel CUSTOM_VALIDATED found, running custom validator for cf-2211-B...`);
           isCorrect = validateMickeyMouse(rawInput, actualOutput);
-          console.log(`[SUBMIT] Custom simulator validator result: ${isCorrect}`);
         } else {
-          console.log(`[SUBMIT] Sentinel CUSTOM_VALIDATED found without specific validator for ${problem.id}, treating exitCode 0 as correct.`);
           isCorrect = true;
         }
       } else {
@@ -325,13 +281,9 @@ export async function POST(req: Request) {
 
         if (!isCorrect) {
           if (problem.id === 'cf-2216-A') {
-            console.log(`[SUBMIT] Strict output match failed for cf-2216-A, running custom simulator validator...`);
             isCorrect = validateCourseWishes(rawInput, actualOutput);
-            console.log(`[SUBMIT] Custom simulator validator result: ${isCorrect}`);
           } else if (problem.id === 'cf-2211-B') {
-            console.log(`[SUBMIT] Strict output match failed for cf-2211-B, running custom simulator validator...`);
             isCorrect = validateMickeyMouse(rawInput, actualOutput);
-            console.log(`[SUBMIT] Custom simulator validator result: ${isCorrect}`);
           }
         }
       }
@@ -343,32 +295,13 @@ export async function POST(req: Request) {
       }
     }
 
-    console.log(`[SUBMIT] Overall Verdict: ${overallVerdict}`);
-
-    await prisma.submission.update({
-      where: { id: submission.id },
-      data: {
-        status: overallVerdict,
-        executionMs: Math.round(maxExecutionMs)
-      }
-    });
-
-    if (overallVerdict === 'Accepted') {
-      const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-      await fetch(`${APP_URL}/api/match/complete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ matchId, winnerId: userId, roomId })
-      });
-    }
-
     return NextResponse.json({
       verdict: overallVerdict,
       executionMs: Math.round(maxExecutionMs),
       failedCase
     });
   } catch (error: any) {
-    console.error('Submission error:', error);
+    console.error('Practice submission error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
