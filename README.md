@@ -56,18 +56,6 @@ codeduel/
 
 ---
 
-## 💻 Screenshots
-
-| **Dashboard** | **Interactive Arena** |
-|:---:|:---:|
-| ![Dashboard](./assets/media__1781359704188.png) | ![Arena](./assets/media__1781358022980.png) |
-
-| **Matchmaking Modal** | **Victory Outcome** |
-|:---:|:---:|
-| ![Matchmaking](./assets/media__1781358821086.png) | ![Victory](./assets/media__1781357990387.png) |
-
----
-
 ## ⚙️ Installation & Local Setup
 
 Follow these steps to run the complete CodeDuel environment locally:
