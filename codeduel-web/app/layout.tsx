@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { ClerkProvider, SignInButton, Show, UserButton } from '@clerk/nextjs';
+import { currentUser } from '@clerk/nextjs/server';
 import './globals.css';
 import { Inter } from 'next/font/google';
 import Link from 'next/link';
@@ -11,11 +12,16 @@ export const metadata: Metadata = {
   description: '1v1 Coding Arena',
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const user = await currentUser();
+  const initials = user?.firstName 
+    ? user.firstName.substring(0, 2).toUpperCase() 
+    : (user?.username ? user.username.substring(0, 2).toUpperCase() : 'U');
+
   return (
     <ClerkProvider>
       <html lang="en" className="dark">
@@ -36,6 +42,19 @@ export default function RootLayout({
                 </SignInButton>
               </Show>
               <Show when="signed-in">
+                <Link 
+                  href="/profile" 
+                  className="text-xs font-bold uppercase tracking-wider text-neutral-400 hover:text-white transition-colors"
+                >
+                  Profile
+                </Link>
+                <Link 
+                  href="/profile" 
+                  className="w-8 h-8 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-[10px] font-black text-amber-400 hover:bg-amber-500/20 transition-all shadow-sm"
+                  title="View Profile"
+                >
+                  {initials}
+                </Link>
                 <UserButton appearance={{
                   elements: {
                     userButtonAvatarBox: "w-8 h-8 rounded-full border border-neutral-800"

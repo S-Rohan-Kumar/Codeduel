@@ -170,6 +170,12 @@ export default function DashboardClient({ userId }: { userId: string }) {
                 <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-full font-semibold">
                   🏆 {stats.winsCount} wins
                 </span>
+                <Link 
+                  href="/profile" 
+                  className="bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 px-2.5 py-1 rounded-full font-semibold transition-colors flex items-center gap-1 shadow-sm"
+                >
+                  👤 Profile
+                </Link>
               </div>
             </div>
           ) : (
